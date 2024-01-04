@@ -708,7 +708,6 @@ static supported_ids_t id_table[] = {
 		{ 6, 0xa5 }, // Cometlake
 		{ 6, 0xa6 }, // Cometlake_L
 		{ 6, 0xa7 }, // Rocketlake
-<<<<<<< HEAD
 
 		/* AMD */
 		{ 23, 0x01 }, // Zen
@@ -729,7 +728,7 @@ static supported_ids_t id_table[] = {
 		{ 25, 0x08 },
 		{ 25, 0x01 },
 		{ 25, 0x00 },
-=======
+
 		{ 6, 0x9c }, // Jasper Lake
 		{ 6, 0x97 }, // Alderlake
 		{ 6, 0x9a }, // Alderlake
@@ -738,7 +737,6 @@ static supported_ids_t id_table[] = {
 		{ 6, 0xbe }, // Alderlake N
 		{ 6, 0xbf }, // Raptorlake S
 		{ 6, 0xaa }, // Mateor Lake L
->>>>>>> intel/master
 		{ 0, 0 } // Last Invalid entry
 };
 
