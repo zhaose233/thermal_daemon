@@ -26,7 +26,7 @@
  */
 
 /* This implements main() function. This will parse command line options and
- * a new instance of cthd_engine object. By default it will create a engine
+ * a new instance of cthd_engine object. By default it will create an engine
  * which uses dts engine, which DTS sensor and use P states to control
  * temperature, without any configuration. Alternatively if the
  * thermal-conf.xml has exact UUID match then it can use the zones and
@@ -37,8 +37,8 @@
  * if the thermal-conf.xml defines parameters.
  */
 
+#include <glib-unix.h>
 #include <syslog.h>
-#include <signal.h>
 #include "thermald.h"
 #include "thd_preference.h"
 #include "thd_engine.h"
@@ -53,7 +53,7 @@
 
 #define EXIT_UNSUPPORTED 2
 
-extern int thd_dbus_server_init(void (*exit_handler)(int));
+extern int thd_dbus_server_init(gboolean (*exit_handler)(void));
 
 // Lock file
 static int lock_file_handle = -1;
@@ -159,7 +159,7 @@ bool check_thermald_running() {
 }
 
 // SIGTERM & SIGINT handler
-void sig_int_handler(int signum) {
+gboolean sig_int_handler(void) {
 	if (thd_engine)
 		thd_engine->thd_engine_terminate();
 	sleep(1);
@@ -168,6 +168,8 @@ void sig_int_handler(int signum) {
 	delete thd_engine;
 	clean_up_lockfile();
 	exit(EXIT_SUCCESS);
+
+	return FALSE;
 }
 
 // main function
@@ -218,7 +220,7 @@ int main(int argc, char *argv[]) {
 			{ "config-file", 0, 0, G_OPTION_ARG_STRING, &conf_file, N_(
 					"configuration file"), NULL },
 			{ "ignore-default-control", 0, 0, G_OPTION_ARG_NONE, &ignore_default_control, N_(
-							"Ignore default CPU temperature control."
+							"Ignore default CPU temperature control. "
 							"Strictly follow thermal-conf.xml"), NULL },
 			{ "workaround-enabled", 0, 0, G_OPTION_ARG_NONE,
 						&workaround_enabled, N_(
@@ -252,8 +254,12 @@ int main(int argc, char *argv[]) {
 
 	g_option_context_set_summary(opt_ctx,
 
-	"Thermal daemon monitors temperature sensors and decides the best action "
-			"based on the temperature readings and user preferences.");
+	"Thermal daemon monitors temperature sensors and decides the best action\n"
+			"based on the temperature readings and user preferences.\n\n"
+	"Copyright (c) 2022, Intel Corporation\n"
+	"This program comes with ABSOLUTELY NO WARRANTY.\n"
+	"This work is licensed under GPL v2.\n"
+	"Refer to https://github.com/intel/thermal_daemon/blob/master/COPYING.");
 
 	success = g_option_context_parse(opt_ctx, &argc, &argv, NULL);
 	g_option_context_free(opt_ctx);
@@ -307,8 +313,8 @@ int main(int argc, char *argv[]) {
 	}
 
 	if (!thd_daemonize) {
-		signal(SIGINT, sig_int_handler);
-		signal(SIGTERM, sig_int_handler);
+		g_unix_signal_add (SIGINT, G_SOURCE_FUNC (sig_int_handler), NULL);
+		g_unix_signal_add (SIGTERM, G_SOURCE_FUNC (sig_int_handler), NULL);
 	}
 
 	// Initialize the GType/GObject system
@@ -339,7 +345,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	if (adaptive) {
-		ret = thd_engine_create_adaptive_engine((bool) ignore_cpuid_check);
+		ret = thd_engine_create_adaptive_engine((bool) ignore_cpuid_check, (bool) test_mode);
 		if (ret != THD_SUCCESS) {
 			thd_log_info("--adaptive option failed on this platform\n");
 			thd_log_info("Ignoring --adaptive option\n");

@@ -84,6 +84,7 @@ protected:
 	bool parse_thermal_cdev_success;
 	std::string uuid;
 	bool parser_disabled;
+	bool adaptive_mode;
 
 private:
 
@@ -148,7 +149,8 @@ public:
 		return control_mode;
 	}
 	void thd_engine_thread();
-	virtual int thd_engine_start(bool ignore_cpuid_check);
+	virtual int thd_engine_init(bool ignore_cpuid_check, bool adaptive = false);
+	virtual int thd_engine_start();
 	int thd_engine_stop();
 	int check_cpu_id();
 
@@ -233,6 +235,9 @@ public:
 		return config_file;
 	}
 	virtual ppcc_t *get_ppcc_param(std::string name);
+	virtual int search_idsp(std::string name) {
+		return THD_ERROR;
+	}
 	cthd_zone *search_zone(std::string name);
 	cthd_cdev *search_cdev(std::string name);
 	cthd_sensor *search_sensor(std::string name);
@@ -285,6 +290,7 @@ public:
 
 	int parser_init();
 	void parser_deinit();
+	int debug_mode_on(void);
 };
 
 #endif /* THD_ENGINE_H_ */

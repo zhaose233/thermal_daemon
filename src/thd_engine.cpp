@@ -48,8 +48,9 @@ static void *cthd_engine_thread(void *arg);
 
 cthd_engine::cthd_engine(std::string _uuid) :
 		current_cdev_index(0), current_zone_index(0), current_sensor_index(0), parse_thermal_zone_success(
-				false), parse_thermal_cdev_success(false), uuid(_uuid), parser_disabled(false), poll_timeout_msec(
-				-1), wakeup_fd(-1), uevent_fd(-1), control_mode(COMPLEMENTRY), write_pipe_fd(
+				false), parse_thermal_cdev_success(false), uuid(_uuid), parser_disabled(
+				false), adaptive_mode(false), poll_timeout_msec(-1), wakeup_fd(
+				-1), uevent_fd(-1), control_mode(COMPLEMENTRY), write_pipe_fd(
 				0), preference(0), status(true), thz_last_uevent_time(0), thz_last_temp_ind_time(
 				0), thz_last_update_event_time(0), terminate(false), genuine_intel(0), authentic_amd(0), has_invariant_tsc(
 				0), has_aperf(
@@ -172,9 +173,10 @@ bool cthd_engine::set_preference(const int pref) {
 	return true;
 }
 
-int cthd_engine::thd_engine_start(bool ignore_cpuid_check) {
+int cthd_engine::thd_engine_init(bool ignore_cpuid_check, bool adaptive) {
 	int ret;
-	int wake_fds[2];
+
+	adaptive_mode = adaptive;
 
 	if (ignore_cpuid_check) {
 		thd_log_debug("Ignore CPU ID check for MSRs \n");
@@ -191,6 +193,34 @@ int cthd_engine::thd_engine_start(bool ignore_cpuid_check) {
 			}
 		}
 	}
+
+	ret = read_thermal_sensors();
+	if (ret != THD_SUCCESS) {
+		thd_log_error("Thermal sysfs Error in reading sensors\n");
+		// This is a fatal error and daemon will exit
+		return THD_FATAL_ERROR;
+	}
+
+	ret = read_cooling_devices();
+	if (ret != THD_SUCCESS) {
+		thd_log_error("Thermal sysfs Error in reading cooling devs\n");
+		// This is a fatal error and daemon will exit
+		return THD_FATAL_ERROR;
+	}
+
+	ret = read_thermal_zones();
+	if (ret != THD_SUCCESS) {
+		thd_log_error("No thermal sensors found\n");
+		// This is a fatal error and daemon will exit
+		return THD_FATAL_ERROR;
+	}
+
+	return THD_SUCCESS;
+}
+
+int cthd_engine::thd_engine_start() {
+	int ret;
+	int wake_fds[2];
 
 	check_for_rt_kernel();
 
@@ -222,27 +252,6 @@ int cthd_engine::thd_engine_start(bool ignore_cpuid_check) {
 	if (poll_interval_sec) {
 		thd_log_msg("Polling mode is enabled: %d\n", poll_interval_sec);
 		poll_timeout_msec = poll_interval_sec * 1000;
-	}
-
-	ret = read_thermal_sensors();
-	if (ret != THD_SUCCESS) {
-		thd_log_error("Thermal sysfs Error in reading sensors\n");
-		// This is a fatal error and daemon will exit
-		return THD_FATAL_ERROR;
-	}
-
-	ret = read_cooling_devices();
-	if (ret != THD_SUCCESS) {
-		thd_log_error("Thermal sysfs Error in reading cooling devs\n");
-		// This is a fatal error and daemon will exit
-		return THD_FATAL_ERROR;
-	}
-
-	ret = read_thermal_zones();
-	if (ret != THD_SUCCESS) {
-		thd_log_error("No thermal sensors found\n");
-		// This is a fatal error and daemon will exit
-		return THD_FATAL_ERROR;
 	}
 
 	if (parser.platform_matched()) {
@@ -699,6 +708,7 @@ static supported_ids_t id_table[] = {
 		{ 6, 0xa5 }, // Cometlake
 		{ 6, 0xa6 }, // Cometlake_L
 		{ 6, 0xa7 }, // Rocketlake
+<<<<<<< HEAD
 
 		/* AMD */
 		{ 23, 0x01 }, // Zen
@@ -719,6 +729,16 @@ static supported_ids_t id_table[] = {
 		{ 25, 0x08 },
 		{ 25, 0x01 },
 		{ 25, 0x00 },
+=======
+		{ 6, 0x9c }, // Jasper Lake
+		{ 6, 0x97 }, // Alderlake
+		{ 6, 0x9a }, // Alderlake
+		{ 6, 0xb7 }, // Raptorlake
+		{ 6, 0xba }, // Raptorlake
+		{ 6, 0xbe }, // Alderlake N
+		{ 6, 0xbf }, // Raptorlake S
+		{ 6, 0xaa }, // Mateor Lake L
+>>>>>>> intel/master
 		{ 0, 0 } // Last Invalid entry
 };
 
@@ -1001,7 +1021,7 @@ cthd_zone* cthd_engine::get_zone(std::string type) {
 }
 
 // Code copied from
-// https://rt.wiki.kernel.org/index.php/RT_PREEMPT_HOWTO#Runtime_detection_of_an_RT-PREEMPT_Kernel
+// https://web.archive.org/web/20130822155153/https://rt.wiki.kernel.org/index.php/RT_PREEMPT_HOWTO#Runtime_detection_of_an_RT-PREEMPT_Kernel
 void cthd_engine::check_for_rt_kernel() {
 	struct utsname _uname;
 	char *crit1 = NULL;
@@ -1297,3 +1317,15 @@ void cthd_engine::parser_deinit() {
 		parser_init_done = false;
 	}
 }
+
+int cthd_engine::debug_mode_on(void) {
+	static const char *debug_mode = TDRUNDIR
+	"/debug_mode";
+	struct stat s;
+
+	if (stat(debug_mode, &s))
+		return 0;
+
+	return 1;
+}
+

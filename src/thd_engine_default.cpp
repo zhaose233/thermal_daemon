@@ -22,6 +22,7 @@
  *
  */
 
+#include <cstring>
 #include <dirent.h>
 #include <errno.h>
 #include <sys/types.h>
@@ -79,22 +80,10 @@ static cooling_dev_t cpu_def_cooling_devices[] = {
 cthd_engine_default::~cthd_engine_default() {
 }
 
-int cthd_engine_default::debug_mode_on(void) {
-	static const char *debug_mode = TDRUNDIR
-	"/debug_mode";
-	struct stat s;
-
-	if (stat(debug_mode, &s))
-		return 0;
-
-	return 1;
-}
-
 int cthd_engine_default::read_thermal_sensors() {
 	int index;
 	DIR *dir;
 	struct dirent *entry;
-	int sensor_mask = 0x0f;
 	cthd_sensor *sensor;
 	const std::string base_path[] = { "/sys/devices/platform/",
 			"/sys/class/hwmon/" };
@@ -147,22 +136,30 @@ int cthd_engine_default::read_thermal_sensors() {
 					if (name != "coretemp" && name != "k10temp")
 						continue;
 
-					int cnt = 0;
-					unsigned int mask = 0x1;
-					do {
-						if (sensor_mask & mask) {
-							std::stringstream temp_input_str;
-							std::string path = base_path[i] + entry->d_name
-									+ "/";
-							csys_fs dts_sysfs(path.c_str());
-							temp_input_str << "temp" << cnt << "_input";
-							if (dts_sysfs.exists(temp_input_str.str())) {
+					std::string temp_dir_path = base_path[i] + entry->d_name
+							+ "/";
+					DIR *temp_dir = nullptr;
+					struct dirent *temp_dir_entry = nullptr;
+					int len_temp_dir_entry = 0;
+					int len_input = strlen("_input");
+
+					if ((temp_dir = opendir(temp_dir_path.c_str())) != NULL) {
+						while ((temp_dir_entry = readdir(temp_dir)) != NULL) {
+							len_temp_dir_entry = strlen(temp_dir_entry->d_name);
+							if ((len_temp_dir_entry >= len_input
+									&& !strcmp(
+											temp_dir_entry->d_name
+													+ len_temp_dir_entry
+													- len_input, "_input"))
+									&& (!strncmp(temp_dir_entry->d_name, "temp",
+											strlen("temp")))) {
+
 								cthd_sensor *sensor = new cthd_sensor(index,
-										base_path[i] + entry->d_name + "/"
-												+ temp_input_str.str(), "hwmon",
-										SENSOR_TYPE_RAW);
+										temp_dir_path + temp_dir_entry->d_name,
+										"hwmon", SENSOR_TYPE_RAW);
 								if (sensor->sensor_update() != THD_SUCCESS) {
 									delete sensor;
+									closedir(temp_dir);
 									closedir(dir);
 									return THD_ERROR;
 								}
@@ -170,9 +167,8 @@ int cthd_engine_default::read_thermal_sensors() {
 								++index;
 							}
 						}
-						mask = (mask << 1);
-						cnt++;
-					} while (mask != 0);
+						closedir(temp_dir);
+					}
 				}
 			}
 			closedir(dir);
@@ -312,8 +308,7 @@ bool cthd_engine_default::add_int340x_processor_dev(void)
 
 				if (critical && passive + 5 * 1000 >= critical) {
 					new_passive = critical - 15 * 1000;
-					if (new_passive < critical)
-						trip->thd_trip_update_set_point(new_passive);
+					trip->thd_trip_update_set_point(new_passive);
 				}
 
 				thd_log_info("Processor thermal device is present \n");
@@ -728,9 +723,18 @@ int cthd_engine_default::read_cooling_devices() {
 
 			// Prefer MMIO access over MSR access for B0D4
 			if (rapl_dev) {
+				struct adaptive_target target = {};
+
 				rapl_dev->set_cdev_alias("");
-				thd_log_info("Disable rapl-msr interface and use rapl-mmio\n");
-				rapl_dev->rapl_update_enable_status(0);
+
+				if (adaptive_mode) {
+					thd_log_info("Disable rapl-msr interface and use rapl-mmio\n");
+					rapl_dev->rapl_update_enable_status(0);
+
+					target.code = "PL1MAX";
+					target.argument = "200000";
+					rapl_dev->set_adaptive_target(target);
+				}
 			}
 			rapl_mmio_dev->set_cdev_alias("B0D4");
 		} else {
@@ -821,6 +825,9 @@ int thd_engine_create_default_engine(bool ignore_cpuid_check,
 		bool exclusive_control, const char *conf_file) {
 	int res;
 	thd_engine = new cthd_engine_default();
+	if (!thd_engine)
+		return THD_ERROR;
+
 	if (exclusive_control)
 		thd_engine->set_control_mode(EXCLUSIVE);
 
@@ -829,7 +836,15 @@ int thd_engine_create_default_engine(bool ignore_cpuid_check,
 	if (conf_file)
 		thd_engine->set_config_file(conf_file);
 
-	res = thd_engine->thd_engine_start(ignore_cpuid_check);
+	res = thd_engine->thd_engine_init(ignore_cpuid_check);
+	if (res != THD_SUCCESS) {
+		if (res == THD_FATAL_ERROR)
+			thd_log_error("THD engine init failed\n");
+		else
+			thd_log_msg("THD engine init failed\n");
+	}
+
+	res = thd_engine->thd_engine_start();
 	if (res != THD_SUCCESS) {
 		if (res == THD_FATAL_ERROR)
 			thd_log_error("THD engine start failed\n");
@@ -860,6 +875,27 @@ void cthd_engine_default::workarounds()
 
 void cthd_engine_default::workaround_rapl_mmio_power(void)
 {
+	if (!workaround_enabled)
+		return;
+
+	cthd_cdev *cdev = search_cdev("rapl_controller_mmio");
+	if (cdev) {
+		/* RAPL MMIO is enabled and getting used. No need to disable */
+		return;
+	} else {
+		csys_fs _sysfs("/sys/devices/virtual/powercap/intel-rapl-mmio/intel-rapl-mmio:0/");
+
+		if (_sysfs.exists()) {
+			std::stringstream temp_str;
+
+			temp_str << "enabled";
+			if (_sysfs.write(temp_str.str(), 0) > 0)
+				return;
+
+			thd_log_debug("Failed to write to RAPL MMIO\n");
+		}
+	}
+
 #ifndef ANDROID
 	int map_fd;
 	void *rapl_mem;
@@ -868,11 +904,6 @@ void cthd_engine_default::workaround_rapl_mmio_power(void)
 
 	unsigned int ebx, ecx, edx;
 	unsigned int fms, family, model;
-
-	csys_fs sys_fs;
-
-	if (!workaround_enabled)
-		return;
 
 	ecx = edx = 0;
 	__cpuid(1, fms, ebx, ecx, edx);
@@ -942,29 +973,9 @@ void cthd_engine_default::workaround_tcc_offset(void)
 			tcc_offset_checked = 1;
 		}
 	} else {
-		csys_fs msr_sysfs;
-		int ret;
-
-		if(msr_sysfs.exists("/dev/cpu/0/msr")) {
-			unsigned long long val = 0;
-
-			ret = msr_sysfs.read("/dev/cpu/0/msr", 0x1a2, (char *)&val, sizeof(val));
-			if (ret > 0) {
-				int tcc;
-
-				tcc = (val >> 24) & 0xff;
-				if (tcc > 10) {
-					val &= ~(0xff << 24);
-					val |= (0x05 << 24);
-					msr_sysfs.write("/dev/cpu/0/msr", 0x1a2, val);
-					tcc_offset_checked = 1;
-				} else {
-					if (!tcc_offset_checked)
-						tcc_offset_low = 1;
-					tcc_offset_checked = 1;
-				}
-			}
-		}
+		thd_log_info("Kernel update is required to update TCC\n");
+		tcc_offset_checked = 1;
+		tcc_offset_low = 1;
 	}
 #endif
 }

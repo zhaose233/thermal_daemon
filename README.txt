@@ -44,6 +44,11 @@ Build
 	make
 	sudo make install
 
+The prefix value depends on the distribution version.
+This can be "/" or "/usr". So please check existing
+path of thermald install, if present to update and
+add appropriate prefix.
+
 3
 - start service
 	sudo systemctl start thermald.service
@@ -60,17 +65,17 @@ Build
 
 Building on Ubuntu
 1. Install
-	sudo apt-get install autoconf
-	sudo apt-get install autoconf-archive
-	sudo apt-get install g++
-	sudo apt-get install libglib2.0-dev
-	sudo apt-get install libdbus-1-dev
-	sudo apt-get install libdbus-glib-1-dev
-	sudo apt-get install libxml2-dev
-	sudo apt-get install gtk-doc-tools
-	sudo apt-get install libupower-glib-dev
-	sudo apt-get install liblzma-dev
-	sudo apt-get install libevdev-dev
+	sudo apt install autoconf
+	sudo apt install autoconf-archive
+	sudo apt install g++
+	sudo apt install libglib2.0-dev
+	sudo apt install libdbus-1-dev
+	sudo apt install libdbus-glib-1-dev
+	sudo apt install libxml2-dev
+	sudo apt install gtk-doc-tools
+	sudo apt install libupower-glib-dev
+	sudo apt install liblzma-dev
+	sudo apt install libevdev-dev
 
 2
 Build
@@ -110,6 +115,51 @@ For build, follow the same procedure as Fedora.
 -------------------------------------------
 
 Releases
+
+Release 2.5.4
+- Android support
+- Workarounds for missing conditions/tables
+
+Release 2.5.3
+- Support Meteor Lake
+
+Release 2.5.2
+- Support Alder Lake N
+- Support ITMT version 2, which is used in some Raptor Lake systems
+
+Release 2.5.1
+- Static analysis fixes
+- Missing init, which causes skipping of conditions in a Dell system
+
+Release 2.5
+- Support of new thermal table for Alder Lake
+- Add Raptor Lake in the list
+
+Release 2.4.9
+- Fix performance issues for Dell Latitude 5421
+- Fix performance issues for Dell Latitude 7320/7420
+(Depend on kernel patch "thermal: int340x: Update OS policy capability handshake")
+- Adaptive improvements from Benzea
+- Thermal Monitor fixes and cosmetic updates
+- Documentation updates from Colin King
+- Static analysis fixes from Benzea
+- Fix test for compressed data vaults
+
+Release 2.4.8
+-Fix Ideapad thermal shutdown issue #328
+
+Release 2.4.7
+- Fix AC/DC power limit issue in some HP TigerLake systems
+- Regression fix for RAPL MSR usage in xml config file
+- Added Japer Lake and Alder Lake CPU models
+- Debug scripts for log collection to upload
+
+Release 2.4.6
+- Fix for Ubuntu bug 1930422
+
+Release 2.4.5
+- Address low performance with Dell Latitude 5420
+with the latest BIOS
 
 Release 2.4.4
 - Address low performance with Dell Latitude 5420
@@ -167,7 +217,7 @@ Release 1.9.1
 Release 1.9
 - The major change in this version is the active power limits adjustment.
 This will be useful to improve performance on some newer platform. But
-this will will lead to increase in CPU and other temperatures. Hence this
+this will lead to increase in CPU and other temperatures. Hence this
 is important to run dptfxtract version 1.4.1 tool to get performance
 sensitive thermal limits (https://github.com/intel/dptfxtract/commits/v1.4.1).
 If the default configuration picked up by thermald is not optimal, user
@@ -182,8 +232,8 @@ secure boot must update to newer kernels.
 
 - TCC offset limits
 As reported in some forums that some platforms have issue with high TCC
-offset settings. Under some special condition this offset is adjusted.
-But currently needs msr module loaded to get MSR access
+offset settings. Under some special condition this offset is adjusted,
+but that currently needs msr module loaded to get MSR access
 from user space. I have submitted a patch to have this exported via sysfs
 for v5.4+ kernel.
 
@@ -371,7 +421,7 @@ on slope and angular increments to dynamically adjust set point
 
 
 Version 0.2
-- Define XML interface to set configuration data. Refer to thermal-conf.xml. This allows to override buggy Bios thermal comfiguration and also allows to extend the capability.
+- Define XML interface to set configuration data. Refer to thermal-conf.xml. This allows overriding buggy Bios thermal comfiguration and also allows extending the capability.
 - Use platform DMI UUID to index into configuration data. If there is no UUID match, falls back to thermal sysfs
 - Terminate interface
 - Takes over control from kernel thermal processing

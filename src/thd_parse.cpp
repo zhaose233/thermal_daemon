@@ -178,6 +178,7 @@ int cthd_parse::parse_new_trip_cdev(xmlNode * a_node, xmlDoc *doc,
 				} else if(!strcasecmp((const char*) cur_node->name,
 						"PidControl")) {
 					pid_control_t pid_params;
+
 					parse_pid_values(cur_node->children, doc, &pid_params);
 					trip_cdev->pid_param.kp = pid_params.Kp;
 					trip_cdev->pid_param.ki = pid_params.Ki;
@@ -225,7 +226,12 @@ int cthd_parse::parse_new_trip_point(xmlNode * a_node, xmlDoc *doc,
 				trip_cdev.target_state_valid = 0;
 				trip_cdev.target_state = 0;
 				trip_cdev.type.clear();
-				memset(&trip_cdev.pid_param, 0, sizeof(pid_param_t));
+
+				trip_cdev.pid_param.valid = 0;
+				trip_cdev.pid_param.kp = 0.0;
+				trip_cdev.pid_param.ki = 0.0;
+				trip_cdev.pid_param.kd = 0.0;
+
 				parse_new_trip_cdev(cur_node->children, doc, &trip_cdev);
 				trip_pt->cdev_trips.push_back(trip_cdev);
 			} else if (!strcasecmp((const char*) cur_node->name,
@@ -292,6 +298,10 @@ int cthd_parse::parse_pid_values(xmlNode * a_node, xmlDoc *doc,
 		pid_control_t *pid_ptr) {
 	xmlNode *cur_node = NULL;
 	char *tmp_value;
+
+	pid_ptr->Kp = 0.0005;
+	pid_ptr->Ki = 0.0001;
+	pid_ptr->Kd = 0.0001;
 
 	for (cur_node = a_node; cur_node; cur_node = cur_node->next) {
 		if (cur_node->type == XML_ELEMENT_NODE) {
@@ -810,6 +820,10 @@ void cthd_parse::dump_thermal_conf() {
 					thermal_info_list[i].cooling_devs[l].max_state);
 			thd_log_info("\t\tStep: %d\n",
 					thermal_info_list[i].cooling_devs[l].inc_dec_step);
+			thd_log_info("\t\tReadBack: %d\n",
+					thermal_info_list[i].cooling_devs[l].read_back);
+			thd_log_info("\t\tDebouncePeriod: %d\n",
+					thermal_info_list[i].cooling_devs[l].debounce_interval);
 			thd_log_info("\t\tAutoDownControl: %d\n",
 					thermal_info_list[i].cooling_devs[l].auto_down_control);
 			if (thermal_info_list[i].cooling_devs[l].pid_enable) {

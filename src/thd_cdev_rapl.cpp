@@ -30,10 +30,6 @@
  *
  */
 void cthd_sysfs_cdev_rapl::set_curr_state(int state, int control) {
-
-	std::stringstream tc_state_dev;
-
-	std::stringstream state_str;
 	int new_state = state, ret;
 
 	if (bios_locked) {
@@ -334,7 +330,14 @@ void cthd_sysfs_cdev_rapl::set_tcc(int tcc) {
 void cthd_sysfs_cdev_rapl::set_adaptive_target(struct adaptive_target target) {
 	int argument = std::stoi(target.argument, NULL);
 	if (target.code == "PL1MAX") {
+		int pl1_rapl;
+
 		min_state = pl0_max_pwr = argument * 1000;
+
+		pl1_rapl = rapl_read_pl1();
+		if (curr_state > pl1_rapl)
+			set_curr_state(pl1_rapl, 1);
+
 		if (curr_state > min_state)
 			set_curr_state(min_state, 1);
 	} else if (target.code == "PL1MIN") {
@@ -357,7 +360,6 @@ void cthd_sysfs_cdev_rapl::set_adaptive_target(struct adaptive_target target) {
 }
 
 int cthd_sysfs_cdev_rapl::update() {
-	std::stringstream temp_str;
 	int constraint_phy_max;
 	bool ppcc = false;
 	std::string domain_name;
@@ -411,8 +413,12 @@ int cthd_sysfs_cdev_rapl::update() {
 
 		// Check if there is any sane max power limit set
 		if (phy_max < 0 || phy_max > rapl_max_sane_phy_max) {
-			thd_log_info("%s:powercap RAPL invalid max power limit range \n",
-					domain_name.c_str());
+			int ret = cdev_sysfs.read("name", domain_name);
+
+			if (!ret)
+				thd_log_info("%s:powercap RAPL invalid max power limit range \n",
+						domain_name.c_str());
+
 			thd_log_info("Calculate dynamically phy_max \n");
 
 			power_on_constraint_0_pwr = rapl_read_pl1();
@@ -476,7 +482,6 @@ bool cthd_sysfs_cdev_rapl::read_ppcc_power_limits() {
 		pl0_max_pwr = ppcc->power_limit_max * 1000;
 		pl0_min_pwr = ppcc->power_limit_min * 1000;
 		pl0_min_window = ppcc->time_wind_min * 1000;
-		pl0_min_window = ppcc->time_wind_min * 1000;
 		pl0_max_window = ppcc->time_wind_max * 1000;
 		pl0_step_pwr = ppcc->step_size * 1000;
 
@@ -497,6 +502,18 @@ bool cthd_sysfs_cdev_rapl::read_ppcc_power_limits() {
 
 		thd_log_info("ppcc limits max:%u min:%u  min_win:%u step:%u\n",
 				pl0_max_pwr, pl0_min_pwr, pl0_min_window, pl0_step_pwr);
+
+		int policy_matched;
+
+		policy_matched = thd_engine->search_idsp("63BE270F-1C11-48FD-A6F7-3AF253FF3E2D");
+		if (policy_matched != THD_SUCCESS)
+			policy_matched = thd_engine->search_idsp("9E04115A-AE87-4D1C-9500-0F3E340BFE75");
+
+		if (policy_matched == THD_SUCCESS) {
+			thd_log_info("IDSP policy matched, so trusting PPCC limits\n");
+			return true;
+		}
+
 		def_max_power = rapl_read_pl1_max();
 		if (def_max_power > pl0_max_pwr)
 			thd_log_warn("ppcc limits is less than def PL1 max power :%d check thermal-conf.xml.auto\n", def_max_power);

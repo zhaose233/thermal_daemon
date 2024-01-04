@@ -63,7 +63,7 @@ bool ThermaldInterface::initialize()
         return false;
     }
 
-    // Read in all the the temperature sensor data from the thermal daemon
+    // Read in all the temperature sensor data from the thermal daemon
     for (uint i = 0; i < sensor_count; i++){
         sensorInformationType new_sensor;
 
@@ -106,7 +106,7 @@ bool ThermaldInterface::initialize()
     if (z_count.isValid()) {
         zone_count = z_count;
     } else {
-        qCritical() << "error from" << iface->interface() << "=" << cdev_count.error();
+        qCritical() << "error from" << iface->interface() << "=" << z_count.error();
         return false;
     }
 
